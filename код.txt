@@ -1,0 +1,352 @@
+package com.mygdx.game;
+
+import com.badlogic.gdx.ApplicationAdapter;
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.audio.Sound;
+import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.ScreenUtils;
+import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.utils.TimeUtils;
+
+import java.util.Iterator;
+
+public class GameScreen implements Screen {
+	float difficulty = 0f;
+	float bombSpeed = 100f;
+	final Wolf game;
+	private Texture EggImage;
+	private Texture WolfBucketImage;
+	private Sound zvonkap;
+	private Music Mygamemusik;
+	private SpriteBatch batch;
+	private OrthographicCamera camera;
+	private Rectangle bucket;
+	private Array<Rectangle> raindrops;
+	private long lastDropTime;
+	private int BombGathered = 0; // Объявление переменной BombGathered и инициализация значением 0
+	private boolean gameOver = false;
+
+
+
+	public GameScreen (final Wolf gam) {
+		this.game=gam;
+
+
+		camera = new OrthographicCamera();
+		camera.setToOrtho(false, 800, 480);
+		batch = new SpriteBatch();
+
+		// загружаю изображения для бомбы и головы волка размером 64х64 пикселя каждое
+		EggImage = new Texture(Gdx.files.internal("Bomb.png"));
+		WolfBucketImage = new Texture(Gdx.files.internal("wolf1.png"));
+
+		// загружаю звуковой эффект бомбы и фоновую "музыку"
+		zvonkap = Gdx.audio.newSound(Gdx.files.internal("Mygameover.wav"));
+		Mygamemusik = Gdx.audio.newMusic(Gdx.files.internal("Mygamemusik.wav"));
+
+		// запуск воспроизведения фоновой музыки
+		Mygamemusik.setLooping(true);
+		Mygamemusik.play();
+
+		// создание прямоугольника для изображения головы волка
+		bucket = new Rectangle();
+		bucket.x =  800 / 2 - 100 / 2; // установка начального положения головы волка
+		bucket.y = 20; // установка нижнего края рамки на 20 пикселей выше нижнего края экрана
+		bucket.width = 80;
+		bucket.height = 80;
+
+		raindrops = new Array<Rectangle>();
+		spawnRaindrop();
+	}
+	// этот метод создает новую бомбу
+	// устанавливает ее координаты, размеры и добавляет ее в коллекцию raindrops.
+	// Также он обновляет время последнего создания бомбы (lastDropTime).
+	// Впоследствии вызывается в основном игровом цикле, когда наступает время для создания новой бомбы.
+	private void spawnRaindrop() {
+		Rectangle raindrop = new Rectangle();
+		raindrop.x = MathUtils.random(0, 800-100);
+		raindrop.y = 480;
+		raindrop.width = 100;
+		raindrop.height = 700;
+		raindrops.add(raindrop);
+		lastDropTime = TimeUtils.nanoTime();
+	}
+
+	public void update() {
+		// Обновление сложности игры
+		difficulty += 0.01f; // Увеличиваем сложность на небольшое значение с каждым обновлением
+
+		// Обновление скорости падения бомб в зависимости от сложности
+		bombSpeed = Math.min(1000f, 100f + difficulty * 200f); // Устанавливаем минимальную скорость падения и увеличиваем ее в зависимости от сложности
+	}
+	// Этот метод переопределяет метод render базового класса и вызывается каждый раз
+	// когда необходимо отобразить сцену. Он очищает экран, обновляет виртуальную камеру
+	// устанавливает матрицу проекции для пакета спрайтов, начинает пакетный режим рисования
+	// увеличивает размер шрифта и отрисовывает указанный текст на экране.
+	@Override
+	public void render(float delta) {
+		ScreenUtils.clear(0, 0, 0.2f, 1);
+		camera.update();
+
+		game.batch.setProjectionMatrix(camera.combined);
+		game.batch.begin();
+		game.font.getData().setScale(2); // Установка размера шрифта в 2 раза относительно стандартного
+		game.font.draw(game.batch, "Bomb Collected: " + BombGathered, 50, 460);
+
+		// рисует голову волка и бомбы на экране, пока игра не окончена.
+		if (!gameOver) {
+			game.batch.draw(WolfBucketImage, bucket.x, bucket.y);
+			for (Rectangle raindrop : raindrops) {
+				game.batch.draw(EggImage, raindrop.x, raindrop.y);
+			}
+		} else {
+			game.font.getData().setScale(4); // Установка размера шрифта в 2 раза относительно стандартного
+			game.font.draw(game.batch, "Game Over", 260, 240);
+
+			// Ждем нажатия на экран
+			if (Gdx.input.isTouched()) {
+				// Переходим на главный экран после нажатия
+				game.setScreen(new MainMenuScreen(game)); // Переход на главный экран
+			}
+		}
+
+		game.batch.end();
+
+		//  код обрабатывает касание экрана, преобразует координаты касания в координаты игрового мира
+		//  перемещает голову волка в соответствии с касанием, сохраняя его отцентрированность
+		//  относительно точки касания.
+		if (!gameOver && Gdx.input.isTouched()) {
+			Vector3 touchPos = new Vector3();
+			touchPos.set(Gdx.input.getX(), Gdx.input.getY(), 0);
+			camera.unproject(touchPos);
+			bucket.x = touchPos.x - 100 / 2;
+		}
+
+		// код генерирует то, что голова волка остается в пределах экрана
+		// и что бомбы создаются с регулярными интервалами времени.
+		if (!gameOver) {
+			if (bucket.x < 0) bucket.x = 0;
+			if (bucket.x > 800 - 50) bucket.x = 800 - 50;
+
+			if (TimeUtils.nanoTime() - lastDropTime > 1000000000) {
+				spawnRaindrop();
+			}
+
+			// Проверяем столкновение и устанавливаем gameOver
+			for (Iterator<Rectangle> iter = raindrops.iterator(); iter.hasNext();) {
+				Rectangle raindrop = iter.next();
+				raindrop.y -= bombSpeed * Gdx.graphics.getDeltaTime();
+
+				// бомбы удаляются, когда они выходят за нижний край экрана
+				// и подсчитывается количество избежаний столкновения с бомбами.
+				if (raindrop.y + 100 < 0) {
+					iter.remove();
+					BombGathered++;
+				}
+
+				// обрабатывает столкновения между бомбами и головой волка
+				// останавливая фоновую музыку, воспроизводя звуковой эффект столкновения, удаляя бомбы и вызывая конец игры.
+				if (raindrop.overlaps(bucket)) {
+					Mygamemusik.stop();
+					zvonkap.play();
+					iter.remove();
+					gameOver = true;
+				}
+			}
+		}
+	}
+	// Переопределенные методы реализуют поведение приложения в различных ситуациях жизненного цикла:
+	@Override
+	public void resize(int width, int height) {
+
+	}
+
+	@Override
+	public void pause() {
+
+	}
+
+	@Override
+	public void resume() {
+
+	}
+
+	@Override
+	public void hide() {
+
+	}
+
+	// Метод освобождает ресурсы, связанные с объектом batch и текстурами WolfBucketImage.
+	@Override
+	public void dispose () {
+		batch.dispose();
+		WolfBucketImage.dispose();
+	}
+
+	//  Метод запускает фоновую музыку (Mygamemusik.play()).
+	@Override
+	public void show() {
+		Mygamemusik.play();
+	}
+}
+
+
+package com.mygdx.game;
+
+import com.badlogic.gdx.Game;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+
+// Класс Wolf является стартовой точкой для игры.
+// Вызывает метод create для инициализации и переходит в цикл игры
+// который вызовет методы render и dispose.
+public class Wolf extends Game {
+    SpriteBatch batch;
+    BitmapFont font;
+
+    //  Метод инициализирует необходимые графические объекты, такие как SpriteBatch и BitmapFont.
+    //  Устанавливает начальный экран игры на MainMenuScreen.
+    @Override
+    public void create() {
+        batch = new SpriteBatch();
+        font = new BitmapFont();
+        this.setScreen(new MainMenuScreen(this));
+    }
+
+    // делегирует отрисовку текущему экрану, отвечает за отрисовку фона и текста.
+    @Override
+    public void render() {
+        super.render();
+    }
+
+    // Метод освобождает занятые игрой графические ресурсы, такие как SpriteBatch и BitmapFont.
+    @Override
+    public void dispose() {
+        super.dispose();
+        batch.dispose();
+        font.dispose();
+    }
+}
+
+
+package com.mygdx.game;
+
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
+import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.utils.ScreenUtils;
+import com.badlogic.gdx.math.Rectangle;
+
+
+public class MainMenuScreen implements Screen {
+    final Wolf game;
+    OrthographicCamera camera;
+    boolean gameStarted = false;
+    boolean gameExited;
+
+    int exitAreaStartX = 100; // Начальная координата X области выхода
+    int exitAreaStartY = 400; // Начальная координата Y области выхода
+    int exitAreaEndX = 250; // Конечная координата X области выхода
+    int exitAreaEndY = 480; // Конечная координата Y области выхода
+
+    // Конструктор инициализирует экран главного меню игры.
+    // принимает экземпляр класса Wolf в качестве параметра, ссылающийся на главную программу игры.
+    public MainMenuScreen(final Wolf game) {
+        this.game = game;
+
+        camera = new OrthographicCamera();
+        camera.setToOrtho(false, 800, 480); // Метод устанавливает размер экрана на 800x480 пикселей.
+    }
+
+    @Override
+    public void show() {
+    }
+
+    //  Метод подготавливает экран к отрисовке, очищая его, настраивая камеру и масштабируя шрифт для отрисовки текста.
+    //  Отрисовка текста будет выполняться в последующих строках кода.
+    @Override
+    public void render(float delta) {
+        ScreenUtils.clear(0, 0, 0.2f, 1);
+        camera.update();
+
+        game.batch.setProjectionMatrix(camera.combined);
+        game.batch.begin();
+        game.font.getData().setScale(2);
+
+        // Отображение надписей "Bombs are collected" и "Touch the screen to begin"
+        game.font.draw(game.batch, "Bombs are collected", 100, 150);
+        game.font.draw(game.batch, "Touch the screen to begin", 100, 100);
+
+
+        game.font.draw(game.batch, "For Exit Game push button HOME", exitAreaStartX + 15, exitAreaStartY + 35); // Рисуем надпись "Выход из игры" в области
+
+        game.batch.end();
+
+        // Определяется область обработки касания экрана, получая координаты точки касания.
+
+        Rectangle exitArea = new Rectangle(exitAreaStartX, exitAreaStartY, exitAreaEndX - exitAreaStartX, exitAreaEndY - exitAreaStartY);
+        if (Gdx.input.justTouched()) {
+            int touchX = Gdx.input.getX();
+            int touchY = Gdx.graphics.getHeight() - Gdx.input.getY();
+
+            // Обработка событий при касании экрана
+            if (exitArea.contains(touchX, touchY)) {
+                gameExited = true; // Устанавливаем флаг выхода из игры
+                Gdx.app.exit(); // Закрыть приложение
+                // System.exit(0); // Завершить выполнение программы
+                return; // Прервать выполнение метода render
+            } else {
+                gameStarted = true; // Установка флага начала игры
+            }
+        }
+
+        // Если игра начата, она переходит на экран игры (GameScreen) с помощью game.setScreen(new GameScreen(game)).
+        // После перехода на новый экран текущий экран (MainMenuScreen) уничтожается с помощью dispose().
+        if (gameStarted) {
+            game.setScreen(new GameScreen(game));
+            dispose();
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.HOME)) {
+            // Обработка нажатия кнопки "Home"
+
+            gameExited = true; // Устанавливаем флаг выхода из игры
+            Gdx.app.exit(); // Закрыть приложение
+            return; // Прервать выполнение метода render
+        }
+    }
+
+
+    // Методы, переопределяющие методы жизненного цикла экрана родительского класса Screen
+    // И предоставляющие базовые реализации для обработки различных событий жизненного цикла экрана.
+
+    @Override
+    public void resize(int width, int height) {
+    }
+
+    @Override
+    public void pause() {
+    }
+
+    @Override
+    public void resume() {
+    }
+
+    @Override
+    public void hide() {
+    }
+
+    @Override
+    public void dispose() {
+        if (gameExited) {
+            Gdx.app.exit(); // Закрыть приложение
+        }
+    }
+}
